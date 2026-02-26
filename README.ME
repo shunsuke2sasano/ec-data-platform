@@ -1,0 +1,37 @@
+# EC Data Platform (Portfolio Project)
+
+## Overview
+ECサイトの売上分析基盤を想定したデータ基盤構築プロジェクト。
+
+raw → clean → mart の3層構成で設計。
+
+## Architecture
+
+- GCS (raw storage)
+- BigQuery
+  - raw dataset
+  - clean dataset
+  - mart dataset
+
+## Data Flow
+
+1. CSVをGCS rawへアップロード
+2. BigQuery raw.raw_customersへロード
+3. SQLでclean.customers作成（重複削除・型変換）
+
+## clean Layer Design
+
+### clean.customers
+
+- created_at を STRING → TIMESTAMPへ変換
+- customer_id単位で重複排除
+- 最新のcreated_atを正とする
+- SAFE関数でエラー回避
+
+## Tech Stack
+
+- GCP
+- BigQuery
+- GCS
+- SQL
+- GitHub
