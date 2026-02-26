@@ -10,9 +10,9 @@ WITH src AS (
   SELECT
     customer_id,
     LOWER(TRIM(email)) AS email,
-    -- created_atの形式が "2026-02-25 10:00:00" みたいに揃ってる前提例
     SAFE.PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S', created_at) AS created_at_ts
   FROM `raw.raw_customers`
+  WHERE created_at != 'created_at'   -- ← ヘッダー除外
 ),
 dedup AS (
   SELECT
