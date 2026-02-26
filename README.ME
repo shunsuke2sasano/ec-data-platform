@@ -1,37 +1,133 @@
 # EC Data Platform (Portfolio Project)
 
-## Overview
-ECサイトの売上分析基盤を想定したデータ基盤構築プロジェクト。
+## 概要
+本プロジェクトは、GCP（Google Cloud Platform）上で構築したシンプルなデータ基盤です。
+以下の構成で、実務を想定したレイヤード設計を行っています。
 
-raw → clean → mart の3層構成で設計。
+- GCS：rawデータ保管
+- BigQuery：データウェアハウス
+- raw / clean / mart / ops の4層構造
 
-## Architecture
+データエンジニアとしての設計・集計・品質管理の基礎実装を目的としています。
 
-- GCS (raw storage)
-- BigQuery
-  - raw dataset
-  - clean dataset
-  - mart dataset
+## アーキテクチャ
 
-## Data Flow
+GCS (raw CSV)
+    ↓
+BigQuery raw
+    ↓
+clean（型変換・重複排除）
+    ↓
+mart（分析用集計テーブル）
+    ↓
+ops（データ品質モニタリング）
 
-1. CSVをGCS rawへアップロード
-2. BigQuery raw.raw_customersへロード
-3. SQLでclean.customers作成（重複削除・型変換）
 
-## clean Layer Design
+---
 
-### clean.customers
+## 各レイヤの役割
 
-- created_at を STRING → TIMESTAMPへ変換
-- customer_id単位で重複排除
-- 最新のcreated_atを正とする
-- SAFE関数でエラー回避
+### raw
+
+元データをそのまま格納するレイヤ。
+データの加工は行わず、常に原本を保持する。
+
+---
+
+### clean
+
+データ整形レイヤ。
+分析可能な状態へ変換し、整合性を担保する。
+
+実装内容：
+
+- `SAFE.PARSE_TIMESTAMP` による STRING → TIMESTAMP 変換
+- `ROW_NUMBER() OVER (PARTITION BY customer_id)` による重複排除
+- customer_id単位で最新レコードを正とする業務ルール想定
+- CSVヘッダー混入データの除外
+- NULLデータの明示的制御
+
+目的：
+1顧客 = 1レコード の整合性を保証する。
+
+---
+
+### mart
+
+分析用の集計テーブルを提供するレイヤ。
+指標定義をこの層に固定することで、再現性を担保。
+
+作成済みテーブル：
+
+- `customer_daily_signups`（日別新規顧客数）
+- `customer_daily_cumulative`（日別累計顧客数）
+- `customer_monthly_signups`（月次新規顧客数）
+- `customer_monthly_growth`（月次累計・前月比成長率）
+
+---
+
+### ops
+
+データ品質監視レイヤ（今後実装予定）
+
+目的：
+
+- raw / clean / mart 間の整合性監視
+- NULL件数・重複件数の監視
+- 異常検知の基盤構築
+
+---
+
+## 設計上の重要ポイント
+
+### 1. 新規顧客定義
+
+customer_idごとの最小created_at（MIN）を「初回登録日」と定義。
+
+これにより、新規顧客数の再現性を保証。
+
+---
+
+### 2. タイムゾーンの明示
+
+`DATE(timestamp, "Asia/Tokyo")` を使用。
+
+UTC基準での集計ズレを防ぎ、日本時間での正確な日次・月次集計を実現。
+
+---
+
+### 3. NULLデータの扱い
+
+- clean層で異常データを制御
+- mart層では分析不能データを除外
+
+責務を明確に分離。
+
+---
+
+### 4. レイヤ分離思想
+
+- clean：データ整形責務
+- mart：指標定義責務
+- ops：品質監視責務
+
+各レイヤの責務を分離することで、変更影響範囲を最小化。
+
+---
 
 ## Tech Stack
 
-- GCP
-- BigQuery
-- GCS
-- SQL
-- GitHub
+- Google Cloud Platform (GCP)
+  - BigQuery
+  - Cloud Storage (GCS)
+- SQL (Standard SQL)
+- Git / GitHub
+
+---
+
+## 今後の改善予定
+
+- Partitioned Table化
+- Incremental処理対応
+- Cloud Scheduler + Cloud Run による定期実行
+- データ品質監視の自動化
