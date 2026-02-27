@@ -1,17 +1,16 @@
-/*
-File: 13_mart_customer_monthly_growth.sql
-Purpose:
-  mart.customer_monthly_growth を作成する（月次の新規/累計/前月比）
+--mart/13_mart_customer_monthly_growth.sql
+--Purpose:
+--  mart.customer_monthly_growth を作成する（月次の新規/累計/前月比）
 
-Metrics:
-  - new_customers: 月次新規
-  - cumulative_customers: 累計
-  - prev_month_new_customers: 前月新規
-  - mom_growth_rate: 前月比成長率（SAFE_DIVIDEで0割回避）
+--Metrics:
+--  - new_customers: 月次新規
+--  - cumulative_customers: 累計
+--  - prev_month_new_customers: 前月新規
+--  - mom_growth_rate: 前月比成長率（SAFE_DIVIDEで0割回避）
 
-Grain:
-  - 1行 = 1ヶ月（signup_month）
-*/
+--Grain:
+--  - 1行 = 1ヶ月（signup_month）
+--
 
 CREATE OR REPLACE TABLE `ec-data-platform.mart.customer_monthly_growth` AS
 WITH m AS (

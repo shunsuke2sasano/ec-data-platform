@@ -1,18 +1,17 @@
-/*
-File: 11_mart_customer_daily_cumulative.sql
-Purpose:
-  mart.customer_daily_cumulative を作成する（日別新規 + 累計顧客数）
+--mart/11_mart_customer_daily_cumulative.sql
+P--urpose:
+--  mart.customer_daily_cumulative を作成する（日別新規 + 累計顧客数）
 
-Definition:
-  - new_customers: 日別新規顧客数
-  - cumulative_customers: 開始日からの累計（window関数）
+--Definition:
+--  - new_customers: 日別新規顧客数
+--  - cumulative_customers: 開始日からの累計（window関数）
 
-Design:
-  - 欠損日を0埋め（カレンダー生成）して、BIで扱いやすくする
+--Design:
+--  - 欠損日を0埋め（カレンダー生成）して、BIで扱いやすくする
 
-Grain:
-  - 1行 = 1日（signup_date）
-*/
+--Grain:
+--  - 1行 = 1日（signup_date）
+
 
 CREATE OR REPLACE TABLE `ec-data-platform.mart.customer_daily_cumulative` AS
 WITH daily AS (
