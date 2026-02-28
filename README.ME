@@ -88,6 +88,24 @@ ops（データ品質モニタリング）
 - mart集計結果の整合チェック
 - アラートフラグ（0件検知・不正値検知）
 
+#### 自動実行（Cloud Run + Scheduler）
+
+ops.customer_data_quality_daily は以下の構成で日次自動実行している。
+
+Cloud Scheduler（毎日 06:00 JST）
+    ↓
+Cloud Run Jobs
+    ↓
+bq query（MERGE実行）
+    ↓
+ops.customer_data_quality_daily 更新
+
+実行用サービスアカウント：
+- sa-cron-bq（BigQuery実行）
+
+起動用サービスアカウント：
+- sa-scheduler-invoker（Run Job呼び出し）
+
 ---
 
 ## 設計上の重要ポイント
