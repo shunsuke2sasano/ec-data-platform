@@ -1,223 +1,186 @@
-# EC Data Platform (Portfolio Project)
+# EC Data Platform（Data Engineering Portfolio）
 
 ## 概要
-本プロジェクトは、GCP（Google Cloud Platform）上で構築したシンプルなデータ基盤です。
-以下の構成で、実務を想定したレイヤード設計を行っています。
 
-- GCS：rawデータ保管
-- BigQuery：データウェアハウス
-- raw / clean / mart / ops の4層構造
+GCP上に構築したシンプルなデータ基盤です。  
+raw → clean → mart → ops の4層構造で設計しています。
 
-データエンジニアとしての設計・集計・品質管理の基礎実装を目的としています。
+単なる集計ではなく、
 
-## アーキテクチャ
+- レイヤ責務を分けること
+- 再実行できる設計にすること
+- データ品質を監視すること
 
-GCS (raw CSV)
-    ↓
-BigQuery raw
-    ↓
-clean（型変換・重複排除）
-    ↓
-mart（分析用集計テーブル）
-    ↓
-ops（データ品質モニタリング）
-
+を意識して作りました。
 
 ---
 
-## 各レイヤの役割
+## アーキテクチャ
+
+- GCS：rawデータ保存
+- BigQuery：
+  - raw
+  - clean
+  - mart
+  - ops
+- Cloud Run：日次実行
+- Cloud Scheduler：日次トリガー
+
+処理の流れ：
+
+GCS（CSVアップロード）  
+↓  
+BigQuery raw  
+↓  
+clean（型変換・重複排除）  
+↓  
+mart（KPI集計）  
+↓  
+ops（データ品質監視）
+
+Cloud Scheduler → Cloud Run → BigQuery（MERGE実行）
+
+---
+
+## アーキテクチャ図
+
+```mermaid
+flowchart TD
+
+    subgraph GCP
+        GCS[GCS<br>raw CSV]
+        RAW[BigQuery<br>raw dataset]
+        CLEAN[BigQuery<br>clean dataset]
+        MART[BigQuery<br>mart dataset]
+        OPS[BigQuery<br>ops dataset]
+
+        SCHEDULER[Cloud Scheduler]
+        RUN[Cloud Run Job]
+    end
+
+    GCS --> RAW
+    RAW --> CLEAN
+    CLEAN --> MART
+    MART --> OPS
+
+    SCHEDULER --> RUN
+    RUN --> OPS
+
+---
+
+## レイヤ構成
 
 ### raw
 
-元データをそのまま格納するレイヤ。
-データの加工は行わず、常に原本を保持する。
+- 加工せず保存
+- 型検証は行わない
+
+元データをそのまま保持し、いつでも再処理できる状態を保つことを目的としています。
 
 ---
 
 ### clean
 
 データ整形レイヤ。
-分析可能な状態へ変換し、整合性を担保する。
 
 実装内容：
 
-- `SAFE.PARSE_TIMESTAMP` による STRING → TIMESTAMP 変換
-- `ROW_NUMBER() OVER (PARTITION BY customer_id)` による重複排除
-- customer_id単位で最新レコードを正とする業務ルール想定
-- CSVヘッダー混入データの除外
-- NULLデータの明示的制御
+- TRIM処理
+- SAFE.PARSE_TIMESTAMPによる型変換
+- NULL制御
+- ROW_NUMBERによる重複排除
 
-目的：
-1顧客 = 1レコード の整合性を保証する。
+customer_id単位で最新レコードを正とするルールで整理しています。
 
 ---
 
 ### mart
 
-分析用の集計テーブルを提供するレイヤ。
-指標定義をこの層に固定することで、再現性を担保。
+分析用に集計したテーブル。
 
-作成済みテーブル：
+作成済み：
 
-- `customer_daily_signups`（日別新規顧客数）
-- `customer_daily_cumulative`（日別累計顧客数）
-- `customer_monthly_signups`（月次新規顧客数）
-- `customer_monthly_growth`（月次累計・前月比成長率）
+- customer_daily_signups
+- customer_daily_cumulative
+- customer_monthly_signups
+- customer_monthly_growth
+
+BIツールでそのまま使える形を意識しています。
 
 ---
 
-### ops
+### ops（データ品質監視）
 
-データ品質監視レイヤ（今後実装予定）
+今回一番力を入れた部分です。
 
 作成テーブル：
 
-- `ops.customer_data_quality_daily`（日次データ品質スナップショット）
-- `ops.customer_data_quality_alerts_daily`（日次品質メトリクスを前日比で評価し、
-    急増・急減を判定したアラート結果（1日×指標で複数行））
+- customer_data_quality_daily
+- customer_data_quality_alerts_daily
+- alert_thresholds
 
-目的：
+やっていること：
 
-- raw / clean / mart 間の整合性監視
-- 件数差分・不正値・重複規模の可視化
-- 異常検知の基盤構築
-
-実装内容：
-
-- raw件数 / clean件数 の日次記録
-- created_at不正件数の検知
-- customer_id重複規模（keys / rows）の計測
-- mart集計結果の整合チェック
-- アラートフラグ（0件検知・不正値検知）
-
-#### 自動実行（Cloud Run + Scheduler）
-
-ops.customer_data_quality_daily は以下の構成で日次自動実行している。
-
-Cloud Scheduler（毎日 06:00 JST）
-    ↓
-Cloud Run Jobs
-    ↓
-bq query（MERGE実行）
-    ↓
-ops.customer_data_quality_daily 更新
-
-実行用サービスアカウント：
-- sa-cron-bq（BigQuery実行）
-
-起動用サービスアカウント：
-- sa-scheduler-invoker（Run Job呼び出し）
-
-#### 1. メトリクス収集（daily）
-
-- raw件数 / clean件数 の日次記録
-- created_at不正件数の検知
-- customer_id重複規模（keys / rows）の計測
-- mart集計結果の整合チェック
-
-#### 2. 前日比ベースの異常検知（alerts）
-
-- 指標を横持ち → 縦持ち（metric_name / metric_value）へ変換
-- `LAG()` により前日値（prev_value）を取得
-- 差分（delta_value）および変動率（change_rate）を算出
-- 指標タイプ別の判定ロジック
-  - row系（件数系）
-  - cumulative系（累計は減少のみ異常）
-  - error/KPI系
-- `MERGE` による日次UPSERT（同日再実行は上書き）
-
-### ops：異常検知（alerts_daily）
-
-`ops.customer_data_quality_alerts_daily` は、日次の品質指標に対して異常判定を行い、結果を履歴として蓄積するテーブルです。
-
-#### 異常判定ロジック（v2：過去平均比較）
-- 対象日は `Asia/Tokyo` の `CURRENT_DATE` を使用
-- 指標は `customer_data_quality_daily` の横持ち（列）から縦持ち（行）へ変換（指標追加を容易にする）
-- 過去3日平均 `avg_3d`（当日を含まない）を算出し、平均との差分 `delta_from_avg` と変動率 `rate_from_avg` を計算
-- ルール（閾値）は `ops.alert_thresholds` テーブルで管理（設定駆動）
-- `cumulative`（累計系）は増加を異常扱いせず、前日比で減少した場合のみ異常
-
-判定結果として以下を保存します：
-- `is_spike`（急増）、`is_drop`（急減）、`is_anomaly`（総合）
-- 当日適用した閾値（`threshold_abs` / `threshold_rate`）
-- ルールバージョン（`rule_version`）
-
-実装SQL：
-- `ops/23_ops_customer_data_quality_alerts_daily_v2_thresholds.sql`
-
-#### 閾値テーブル（設定駆動）
-`ops.alert_thresholds` に指標別の閾値を定義します。
-
-主なカラム：
-- `metric_name`：指標名（JOINキー）
-- `metric_type`：row / cumulative / error_or_kpi
-- `threshold_abs`：件数ベースの閾値
-- `threshold_rate`：割合ベースの閾値
-- `is_enabled`：監視ON/OFF
+- raw / clean / mart の件数監視
+- 前日比較
+- 過去3日平均との比較（avg_3d）
+- 閾値による異常判定
+- 設定駆動型アラート
 
 ---
 
-### アラート確認クエリ
+## 異常検知設計
 
-```sql
-SELECT *
-FROM `ec-data-platform.ops.customer_data_quality_alerts_daily`
-WHERE run_date = CURRENT_DATE("Asia/Tokyo")
-  AND is_anomaly = TRUE
-ORDER BY metric_name;
+### 実装ポイント
 
----
+- STRUCT + UNNESTで縦持ち化
+- LAGで前日値取得
+- 過去3日平均（avg_3d）算出
+- delta / rate計算
+- NULLガード実装
+- MERGEによるUPSERT（冪等設計）
 
-## 設計上の重要ポイント
+同じ日に再実行しても整合性が保たれる設計にしています。
 
-### 1. 新規顧客定義
-
-customer_idごとの最小created_at（MIN）を「初回登録日」と定義。
-
-これにより、新規顧客数の再現性を保証。
+累計系指標（cumulative）は減少のみ異常扱いとしています。
 
 ---
 
-### 2. タイムゾーンの明示
+## 設定駆動化
 
-`DATE(timestamp, "Asia/Tokyo")` を使用。
+alert_thresholdsテーブルで閾値を管理しています。
 
-UTC基準での集計ズレを防ぎ、日本時間での正確な日次・月次集計を実現。
-
----
-
-### 3. NULLデータの扱い
-
-- clean層で異常データを制御
-- mart層では分析不能データを除外
-
-責務を明確に分離。
+SQLを書き換えなくても、閾値の変更や有効/無効の切り替えが可能です。
 
 ---
 
-### 4. レイヤ分離思想
+## 工夫した点
 
-- clean：データ整形責務
-- mart：指標定義責務
-- ops：品質監視責務
+- MERGEによる日次UPSERT
+- Asia/Tokyoを明示した日付管理
+- レイヤごとの責務分離
+- ロジックと閾値の分離
 
-各レイヤの責務を分離することで、変更影響範囲を最小化。
-
----
-
-## Tech Stack
-
-- Google Cloud Platform (GCP)
-  - BigQuery
-  - Cloud Storage (GCS)
-- SQL (Standard SQL)
-- Git / GitHub
+実務での運用を想定して設計しています。
 
 ---
 
-## 今後の改善予定
+## 今後の拡張
 
-- Partitioned Table化
-- Incremental処理対応
-- Cloud Scheduler + Cloud Run による定期実行
-- データ品質監視の自動化
+- Slack通知連携
+- ダッシュボード可視化
+- IAM最小権限整理
+
+---
+
+## まとめ
+
+データを集計するだけでなく、
+
+- 再実行可能な設計
+- 設定駆動型の異常検知
+- レイヤ責務の明確化
+
+を意識して構築しました。
+
+実務を想定したデータ基盤として設計しています。
