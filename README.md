@@ -47,24 +47,25 @@ Cloud Scheduler → Cloud Run → BigQuery（MERGE実行）
 ```mermaid
 flowchart TD
 
-    subgraph GCP
-        GCS[GCS<br>raw CSV]
-        RAW[BigQuery<br>raw dataset]
-        CLEAN[BigQuery<br>clean dataset]
-        MART[BigQuery<br>mart dataset]
-        OPS[BigQuery<br>ops dataset]
+  subgraph GCP
+    GCS[GCS<br/>raw CSV]
+    RAW[BigQuery<br/>raw dataset]
+    CLEAN[BigQuery<br/>clean dataset]
+    MART[BigQuery<br/>mart dataset]
+    OPS[BigQuery<br/>ops dataset]
 
-        SCHEDULER[Cloud Scheduler]
-        RUN[Cloud Run Job]
-    end
+    SCHEDULER[Cloud Scheduler]
+    RUN[Cloud Run Job]
+  end
 
-    GCS --> RAW
-    RAW --> CLEAN
-    CLEAN --> MART
-    MART --> OPS
+  GCS --> RAW
+  RAW --> CLEAN
+  CLEAN --> MART
+  MART --> OPS
 
-    SCHEDULER --> RUN
-    RUN --> OPS
+  SCHEDULER --> RUN
+  RUN --> OPS
+```
 
 ---
 
