@@ -1,4 +1,4 @@
--- ops/22_ops_customer_data_quality_alerts_daily_v2_avg.sql
+-- ops//archive/22_ops_customer_data_quality_alerts_daily_v2_avg.sql
 -- Purpose:
 --   customer_data_quality_daily から「過去3日平均」との乖離で異常検知し、
 --   ops.customer_data_quality_alerts_daily に日次UPSERTする。

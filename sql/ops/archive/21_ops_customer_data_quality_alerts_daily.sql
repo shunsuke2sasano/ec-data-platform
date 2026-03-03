@@ -1,4 +1,4 @@
--- ops/21_ops_customer_data_quality_alerts_daily.sql
+-- ops/archive/21_ops_customer_data_quality_alerts_daily.sql
 -- Purpose:
 --   customer_data_quality_daily（メトリクス）から前日比を算出し、
 --   急増/急減（差分・変動率）を判定して alerts テーブルに日次UPSERTする。
