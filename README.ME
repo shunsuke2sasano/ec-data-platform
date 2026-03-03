@@ -126,6 +126,35 @@ ops.customer_data_quality_daily 更新
   - error/KPI系
 - `MERGE` による日次UPSERT（同日再実行は上書き）
 
+### ops：異常検知（alerts_daily）
+
+`ops.customer_data_quality_alerts_daily` は、日次の品質指標に対して異常判定を行い、結果を履歴として蓄積するテーブルです。
+
+#### 異常判定ロジック（v2：過去平均比較）
+- 対象日は `Asia/Tokyo` の `CURRENT_DATE` を使用
+- 指標は `customer_data_quality_daily` の横持ち（列）から縦持ち（行）へ変換（指標追加を容易にする）
+- 過去3日平均 `avg_3d`（当日を含まない）を算出し、平均との差分 `delta_from_avg` と変動率 `rate_from_avg` を計算
+- ルール（閾値）は `ops.alert_thresholds` テーブルで管理（設定駆動）
+- `cumulative`（累計系）は増加を異常扱いせず、前日比で減少した場合のみ異常
+
+判定結果として以下を保存します：
+- `is_spike`（急増）、`is_drop`（急減）、`is_anomaly`（総合）
+- 当日適用した閾値（`threshold_abs` / `threshold_rate`）
+- ルールバージョン（`rule_version`）
+
+実装SQL：
+- `ops/23_ops_customer_data_quality_alerts_daily_v2_thresholds.sql`
+
+#### 閾値テーブル（設定駆動）
+`ops.alert_thresholds` に指標別の閾値を定義します。
+
+主なカラム：
+- `metric_name`：指標名（JOINキー）
+- `metric_type`：row / cumulative / error_or_kpi
+- `threshold_abs`：件数ベースの閾値
+- `threshold_rate`：割合ベースの閾値
+- `is_enabled`：監視ON/OFF
+
 ---
 
 ### アラート確認クエリ
