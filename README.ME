@@ -73,6 +73,8 @@ ops（データ品質モニタリング）
 作成テーブル：
 
 - `ops.customer_data_quality_daily`（日次データ品質スナップショット）
+- `ops.customer_data_quality_alerts_daily`（日次品質メトリクスを前日比で評価し、
+    急増・急減を判定したアラート結果（1日×指標で複数行））
 
 目的：
 
@@ -105,6 +107,35 @@ ops.customer_data_quality_daily 更新
 
 起動用サービスアカウント：
 - sa-scheduler-invoker（Run Job呼び出し）
+
+#### 1. メトリクス収集（daily）
+
+- raw件数 / clean件数 の日次記録
+- created_at不正件数の検知
+- customer_id重複規模（keys / rows）の計測
+- mart集計結果の整合チェック
+
+#### 2. 前日比ベースの異常検知（alerts）
+
+- 指標を横持ち → 縦持ち（metric_name / metric_value）へ変換
+- `LAG()` により前日値（prev_value）を取得
+- 差分（delta_value）および変動率（change_rate）を算出
+- 指標タイプ別の判定ロジック
+  - row系（件数系）
+  - cumulative系（累計は減少のみ異常）
+  - error/KPI系
+- `MERGE` による日次UPSERT（同日再実行は上書き）
+
+---
+
+### アラート確認クエリ
+
+```sql
+SELECT *
+FROM `ec-data-platform.ops.customer_data_quality_alerts_daily`
+WHERE run_date = CURRENT_DATE("Asia/Tokyo")
+  AND is_anomaly = TRUE
+ORDER BY metric_name;
 
 ---
 
